@@ -25,6 +25,16 @@ class Cell(object):
     def is_empty(self):
         return self.state == {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
 
+    def is_collision(self):
+        d = self.state
+        non_zeros = len([x for x in d.values() if x != 0])
+        if non_zeros == 2:
+            """not doing a xor, because 1 might be replaced
+            by something else in the future (maybe a class)"""
+            return (d['N'] == 0 and d['S'] == 0) \
+                or (d['E'] == 0 and d['W'] == 0)
+        return False
+
     @staticmethod
     def generate_state(alive=False):
         state = {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
@@ -61,7 +71,20 @@ class Board(object):
         m = self.map
         x, y = cell.location
         st = cell.state
-        next_st = cell.next_state
+
+        if cell.is_collision():
+            if st['N'] == 0: # EW collision
+                if random.random() < 0.5:
+                    st['W'], st['E'] = st['E'], st['W']
+
+                st['N'], st['S'] = st['W'], st['E']
+                st['W'], st['E'] = 0, 0
+            else:            # NS collision
+                if random.random() < 0.5:
+                    st['N'], st['S'] = st['S'], st['N']
+
+                st['W'], st['E'] = st['N'], st['S']
+                st['N'], st['S'] = 0, 0
 
         if st['N'] != 0:
             m[x][(y + 1) % map_size].next_state['N'] += 1
