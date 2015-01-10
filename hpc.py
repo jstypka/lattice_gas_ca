@@ -7,7 +7,15 @@ from pygame.locals import *
 speed = 10 # how many iterations per second
 squares = 16 # size of squares: 8 or 16 or 32 or 64
 map_size = 32 # the width and height
-RO = 0.2 # the density
+
+DENSITY = 0.2 # RO
+ENERGY_INIT = 20 # N
+ENERGY_GAIN = 10000 # M
+
+class Particle(object):
+    def __init__(self):
+        diff = 0.1 * ENERGY_INIT
+        self.energy = random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff)
 
 class Tile(object):
     def __init__(self, size):
@@ -35,12 +43,23 @@ class Cell(object):
                 or (d['E'] == 0 and d['W'] == 0)
         return False
 
+    def decrease_energy(self):
+        s = self.state
+        for direction, part in s.items():
+            if part != 0:
+                if part.energy <= 0:
+                    s[direction] = 0
+                else:
+                    part.energy -= 1
+                    print part.energy
+
+
     @staticmethod
     def generate_state(alive=False):
         state = {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
         if alive:
             direction = random.choice(['N', 'E', 'S', 'W'])
-            state[direction] = 1
+            state[direction] = Particle()
         return state
 
 class Board(object):
@@ -54,7 +73,8 @@ class Board(object):
             for g in xrange(map_size):
                 location = (i, g)
                 if ran == True:
-                    self.map[i].insert(g, Cell(location, random.random() < RO))
+                    self.map[i].insert(g, Cell(location,
+                                               random.random() < DENSITY))
                 else:
                     self.map[i].insert(g, Cell(location))            
 
@@ -78,27 +98,32 @@ class Board(object):
                     st['W'], st['E'] = st['E'], st['W']
 
                 st['N'], st['S'] = st['W'], st['E']
+                st['N'].energy += ENERGY_GAIN / 2
+                st['S'].energy += ENERGY_GAIN / 2
                 st['W'], st['E'] = 0, 0
             else:            # NS collision
                 if random.random() < 0.5:
                     st['N'], st['S'] = st['S'], st['N']
 
                 st['W'], st['E'] = st['N'], st['S']
+                st['W'].energy += ENERGY_GAIN / 2
+                st['E'].energy += ENERGY_GAIN / 2
                 st['N'], st['S'] = 0, 0
 
         if st['N'] != 0:
-            m[x][(y + 1) % map_size].next_state['N'] += 1
+            m[x][(y + 1) % map_size].next_state['N'] = st['N']
         if st['S'] != 0:
-            m[x][y - 1].next_state['S'] += 1
+            m[x][y - 1].next_state['S'] = st['S']
         if st['E'] != 0:
-            m[(x + 1) % map_size][y].next_state['E'] += 1
+            m[(x + 1) % map_size][y].next_state['E'] = st['E']
         if st['W'] != 0:
-            m[x - 1][y].next_state['W'] += 1
+            m[x - 1][y].next_state['W'] = st['W']
 
     def next_iteration(self):
         for i in xrange(map_size):
             for g in xrange(map_size):
                 cell = self.map[i][g]
+                cell.decrease_energy()
                 self.calculate_cell(cell)
 
     def update_board(self):
