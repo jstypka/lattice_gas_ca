@@ -1,3 +1,4 @@
+from __future__ import division
 from collections import OrderedDict
 import pygame,random
 from pygame.locals import *
@@ -11,11 +12,15 @@ map_size = 32 # the width and height
 DENSITY = 0.2 # RO
 ENERGY_INIT = 20 # N
 ENERGY_GAIN = 50 # M
+ENERGY_SPLIT = 'winner_takes_it_all' # 'equal' | 'winner_takes_it_all'
 
 class Particle(object):
     def __init__(self):
         diff = 0.1 * ENERGY_INIT
         self.energy = random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff)
+
+    def decrease_energy(self):
+        self.energy -= 1
 
 class Tile(object):
     def __init__(self, size):
@@ -50,7 +55,7 @@ class Cell(object):
                 if part.energy <= 0:
                     s[direction] = 0
                 else:
-                    part.energy -= 1
+                    part.decrease_energy()
 
 
     @staticmethod
@@ -85,6 +90,18 @@ class Board(object):
                 img = alive_img if not cell.is_empty() else dead_img
                 screen.blit(img, (loc[0] * tiles.size, loc[1] * tiles.size))
 
+    @staticmethod
+    def collide_particles(p1, p2):
+        if ENERGY_SPLIT == 'equal':
+            p1.energy += ENERGY_GAIN / 2
+            p2.energy += ENERGY_GAIN / 2
+        elif ENERGY_SPLIT == 'winner_takes_it_all':
+            if p1.energy > p2.energy:
+                p1.energy += ENERGY_GAIN
+            else:
+                p2.energy += ENERGY_GAIN
+        return p1, p2
+
     def calculate_cell(self, cell):
         """Computes the cell.next_state value based on its neighbourhood"""
         m = self.map
@@ -96,17 +113,13 @@ class Board(object):
                 if random.random() < 0.5:
                     st['W'], st['E'] = st['E'], st['W']
 
-                st['N'], st['S'] = st['W'], st['E']
-                st['N'].energy += ENERGY_GAIN / 2
-                st['S'].energy += ENERGY_GAIN / 2
+                st['N'], st['S'] = self.collide_particles(st['W'], st['E'])
                 st['W'], st['E'] = 0, 0
             else:            # NS collision
                 if random.random() < 0.5:
                     st['N'], st['S'] = st['S'], st['N']
 
-                st['W'], st['E'] = st['N'], st['S']
-                st['W'].energy += ENERGY_GAIN / 2
-                st['E'].energy += ENERGY_GAIN / 2
+                st['W'], st['E'] = self.collide_particles(st['N'], st['S'])
                 st['N'], st['S'] = 0, 0
 
         if st['N'] != 0:
