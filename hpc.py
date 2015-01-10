@@ -10,7 +10,7 @@ map_size = 32 # the width and height
 
 DENSITY = 0.2 # RO
 ENERGY_INIT = 20 # N
-ENERGY_GAIN = 10000 # M
+ENERGY_GAIN = 50 # M
 
 class Particle(object):
     def __init__(self):
@@ -51,7 +51,6 @@ class Cell(object):
                     s[direction] = 0
                 else:
                     part.energy -= 1
-                    print part.energy
 
 
     @staticmethod
