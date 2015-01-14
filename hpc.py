@@ -12,12 +12,17 @@ map_size = 32 # the width and height
 DENSITY = 0.2 # RO
 ENERGY_INIT = 20 # N
 ENERGY_GAIN = 50 # M
-ENERGY_SPLIT = 'winner_takes_it_all' # 'equal' | 'winner_takes_it_all'
+ENERGY_SPLIT = 'good_or_bad' # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
+GOOD_TO_BAD_RATIO =  0.8
 
 class Particle(object):
-    def __init__(self):
+    def __init__(self, ptype='random'):
         diff = 0.1 * ENERGY_INIT
         self.energy = random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff)
+        if ptype == 'random':
+            self.ptype = 'good' if random.random() < GOOD_TO_BAD_RATIO else 'bad'
+        else:
+            self.ptype = ptype
 
     def decrease_energy(self):
         self.energy -= 1
@@ -91,15 +96,31 @@ class Board(object):
                 screen.blit(img, (loc[0] * tiles.size, loc[1] * tiles.size))
 
     @staticmethod
+    def good_collision(p1, p2):
+        p1.energy += ENERGY_GAIN / 2
+        p2.energy += ENERGY_GAIN / 2
+
+    @staticmethod
+    def bad_collision(p1, p2):
+        if p1.energy > p2.energy:
+            p1.energy += ENERGY_GAIN
+        else:
+            p2.energy += ENERGY_GAIN
+
+    @staticmethod
     def collide_particles(p1, p2):
         if ENERGY_SPLIT == 'equal':
-            p1.energy += ENERGY_GAIN / 2
-            p2.energy += ENERGY_GAIN / 2
+            Board.good_collision(p1, p2)
+
         elif ENERGY_SPLIT == 'winner_takes_it_all':
-            if p1.energy > p2.energy:
-                p1.energy += ENERGY_GAIN
+            Board.bad_collision(p1, p2)
+
+        elif ENERGY_SPLIT == 'good_or_bad':
+            if p1.ptype == p2.ptype == 'good':
+                Board.good_collision(p1, p2)
             else:
-                p2.energy += ENERGY_GAIN
+                Board.bad_collision(p1, p2)
+
         return p1, p2
 
     def calculate_cell(self, cell):
