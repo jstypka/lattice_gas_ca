@@ -1,19 +1,32 @@
 from __future__ import division
 from collections import OrderedDict
-import pygame,random
+import pygame, random
 from pygame.locals import *
 
-#-----PARAMS-----
+# -----PARAMS-----
 
-speed = 10 # how many iterations per second
-squares = 16 # size of squares: 8 or 16 or 32 or 64
-map_size = 32 # the width and height
+speed = 10  # how many iterations per second
+squares = 16  # size of squares: 8 or 16 or 32 or 64
+map_size = 32  # the width and height
+margin = 1
 
-DENSITY = 0.2 # RO
-ENERGY_INIT = 20 # N
-ENERGY_GAIN = 50 # M
-ENERGY_SPLIT = 'good_or_bad' # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
-GOOD_TO_BAD_RATIO =  0.8
+DENSITY = 0.2  # RO
+ENERGY_INIT = 20  # N
+ENERGY_GAIN = 10  # M
+ENERGY_SPLIT = 'good_or_bad'  # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
+GOOD_TO_BAD_RATIO = 0.8
+
+DEAD_COLOUR = (30, 30, 30)
+GOOD_COLOUR = (10, 20, 40)
+BAD_COLOUR = (40, 20, 10)
+
+alive_colours = {
+    "bad": BAD_COLOUR,
+    "good": GOOD_COLOUR
+}
+alive_states = [False, True, True]
+behaviours = ["", "good", "bad"]
+
 
 class Particle(object):
     def __init__(self, ptype='random'):
@@ -27,21 +40,21 @@ class Particle(object):
     def decrease_energy(self):
         self.energy -= 1
 
+
 class Tile(object):
     def __init__(self, size):
-        self.alive_img = "res/alive_" + str(size) + ".png"
-        self.dead_img = "res/dead_" + str(size) + ".png"
         self.size = size
 
+
 class Cell(object):
-    def __init__(self, location, alive = False):
-        self.next_state = {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
+    def __init__(self, location, alive=False):
+        self.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
         self.state = Cell.generate_state(alive)
-        self.pressed = False
+        self.pressed_count = 0
         self.location = location
 
     def is_empty(self):
-        return self.state == {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
+        return self.state == {'N': 0, 'E': 0, 'S': 0, 'W': 0}
 
     def is_collision(self):
         d = self.state
@@ -50,7 +63,7 @@ class Cell(object):
             """not doing a xor, because 1 might be replaced
             by something else in the future (maybe a class)"""
             return (d['N'] == 0 and d['S'] == 0) \
-                or (d['E'] == 0 and d['W'] == 0)
+                   or (d['E'] == 0 and d['W'] == 0)
         return False
 
     def decrease_energy(self):
@@ -64,15 +77,16 @@ class Cell(object):
 
 
     @staticmethod
-    def generate_state(alive=False):
-        state = {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
+    def generate_state(alive=False, behaviour=None):
+        behaviour = "random" if not behaviour else behaviour
+        state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
         if alive:
             direction = random.choice(['N', 'E', 'S', 'W'])
-            state[direction] = Particle()
+            state[direction] = Particle(behaviour)
         return state
 
-class Board(object):
 
+class Board(object):
     def __init__(self):
         self.map = []
 
@@ -85,15 +99,13 @@ class Board(object):
                     self.map[i].insert(g, Cell(location,
                                                random.random() < DENSITY))
                 else:
-                    self.map[i].insert(g, Cell(location))            
+                    self.map[i].insert(g, Cell(location))
 
     def draw(self):
         for i in xrange(map_size):
             for g in xrange(map_size):
                 cell = self.map[i][g]
-                loc = cell.location
-                img = alive_img if not cell.is_empty() else dead_img
-                screen.blit(img, (loc[0] * tiles.size, loc[1] * tiles.size))
+                self.refresh_cell(cell)
 
     @staticmethod
     def good_collision(p1, p2):
@@ -130,13 +142,13 @@ class Board(object):
         st = cell.state
 
         if cell.is_collision():
-            if st['N'] == 0: # EW collision
+            if st['N'] == 0:  # EW collision
                 if random.random() < 0.5:
                     st['W'], st['E'] = st['E'], st['W']
 
                 st['N'], st['S'] = self.collide_particles(st['W'], st['E'])
                 st['W'], st['E'] = 0, 0
-            else:            # NS collision
+            else:  # NS collision
                 if random.random() < 0.5:
                     st['N'], st['S'] = st['S'], st['N']
 
@@ -164,29 +176,33 @@ class Board(object):
         for i in xrange(map_size):
             for g in xrange(map_size):
                 cell = self.map[i][g]
-                loc = cell.location
                 cell.state = cell.next_state
                 self.refresh_cell(cell)
+                cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+
 
     def refresh_cell(self, cell):
         loc = cell.location
-        
-        img = alive_img if not cell.is_empty() else dead_img
-        screen.blit(img, (loc[0] * tiles.size, loc[1] * tiles.size))
-        cell.next_state = {'N' : 0, 'E' : 0, 'S' : 0, 'W' : 0}
+        if not cell.is_empty():
+            particles_colours = [alive_colours[part.ptype] for el, part in cell.state.items() if part]
+            colour = tuple(sum(t) / len(particles_colours) for t in zip(*particles_colours))
+        else:
+            colour = DEAD_COLOUR
+        # colour = (50, 80, 200) if not cell.is_empty() else (30, 30, 30)
+        pygame.draw.rect(screen, colour, (
+            loc[0] * (margin + tiles.size) + margin, loc[1] * (margin + tiles.size) + margin, tiles.size, tiles.size))
+
 
 pygame.init()
 tiles = Tile(squares)
 screen_size = map_size * tiles.size, map_size * tiles.size
 screen = pygame.display.set_mode(screen_size)
 clock = pygame.time.Clock()
-alive_img = pygame.image.load(tiles.alive_img).convert()
-dead_img = pygame.image.load(tiles.dead_img).convert()
 done = False
 
 board = Board()
 board.fill(False)
-board.draw()  
+board.draw()
 tp = 0
 run = False
 
@@ -208,44 +224,74 @@ while not done:
                 board.next_iteration()
                 board.update_board()
 
-        if event.type == MOUSEBUTTONUP:
+
+            def redraw_board(fill=True):
+                board.map = []
+                board.fill(fill)
+                board.draw()
+
+            if event.key == K_r:
+                redraw_board(False)
+
+            if event.key == K_a:
+                redraw_board((True))
+
+        # if event.type == MOUSEBUTTONUP:
+        # for i in xrange(map_size):
+        #         for g in xrange(map_size):
+        #             board.map[i][g].pressed = 0
+        if event.type == MOUSEBUTTONDOWN:
+            pos = pygame.mouse.get_pos()
+            (button1, button2, button3) = pygame.mouse.get_pressed()
             for i in xrange(map_size):
                 for g in xrange(map_size):
-                    board.map[i][g].pressed = False
+                    cell = board.map[i][g]
+                    x_begin = cell.location[0] * (tiles.size + margin)
+                    y_begin = cell.location[1] * (tiles.size + margin)
 
-    pressed = pygame.key.get_pressed()
-    mouse = pygame.mouse.get_pressed()
-    pos = pygame.mouse.get_pos()
+                    if 0 <= pos[0] - x_begin < tiles.size and 0 <= pos[1] - y_begin < tiles.size:
 
-    if pressed[K_r]:
-        board.map = []
-        board.fill(False)
-        board.draw()
+                        if button1:
+                            cell.pressed_count = (cell.pressed_count + 1) % len(alive_states)
+                        else:
+                            cell.pressed_count = (cell.pressed_count - 1) % len(alive_states)
 
-    if pressed[K_a]:
-        board.map = []
-        board.fill(True)
-        board.draw()
+                        cell.state = Cell.generate_state(alive_states[cell.pressed_count],
+                                                         behaviours[cell.pressed_count])
 
-    if run and tp >= 1000/speed :
+                        board.refresh_cell(cell)
+                        cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+
+
+
+
+    # pressed = pygame.key.get_pressed()
+    # mouse = pygame.mouse.get_pressed()
+    # event = pygame.event.get()
+
+    if run and tp >= 1000 / speed:
         tp = 0
         board.next_iteration()
         board.update_board()
 
-    if mouse[0] or mouse[2]:
-        for i in xrange(map_size):
-            for g in xrange(map_size):
-                cell = board.map[i][g]
-                x_begin = cell.location[0] * tiles.size
-                y_begin = cell.location[1] * tiles.size
-
-                if 0 <= pos[0] - x_begin < tiles.size \
-                and 0 <= pos[1] - y_begin < tiles.size \
-                and not cell.pressed:
-                    is_alive = True if mouse[0] else False
-                    cell.state = Cell.generate_state(is_alive)
-                    cell.pressed = is_alive
-                    board.refresh_cell(cell)
+    # if mouse[0] or mouse[2]:
+    # for i in xrange(map_size):
+    #         for g in xrange(map_size):
+    #             cell = board.map[i][g]
+    #             x_begin = cell.location[0] * (tiles.size + margin)
+    #             y_begin = cell.location[1] * (tiles.size + margin)
+    #
+    #             if 0 <= pos[0] - x_begin < tiles.size and 0 <= pos[1] - y_begin < tiles.size:
+    #
+    #                 if mouse[0]:
+    #                     cell.pressed_count = (cell.pressed_count + 1) % len(alive_states)
+    #                 else:
+    #                     cell.pressed_count = (cell.pressed_count - 1) % len(alive_states)
+    #
+    #                 cell.state = Cell.generate_state(alive_states[cell.pressed_count], behaviours[cell.pressed_count])
+    #
+    #                 board.refresh_cell(cell)
+    #                 cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
 
     pygame.display.flip()
 
