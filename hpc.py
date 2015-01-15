@@ -22,8 +22,8 @@ ENERGY_INIT = 20  # N
 ENERGY_GAIN = 40  # M
 MAX_ENERGY = 200
 ENERGY_SPLIT = 'good_or_bad'  # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
-ENERGY_CHILD = 150
-GOOD_TO_BAD_RATIO = 0.5
+ENERGY_CHILD = 120
+GOOD_TO_BAD_RATIO = 0.8
 
 MAX_COLOUR = 220
 MIN_COLOUR = 20
@@ -139,8 +139,9 @@ class Board(object):
         elif p2.energy > p1.energy:
             p2.increase_energy(ENERGY_GAIN)
         else:
-            p1.increase_energy(ENERGY_GAIN // 2)
-            p2.increase_energy(ENERGY_GAIN // 2)
+            random.choice((p1, p2)).increase_energy(ENERGY_GAIN)
+            # p1.increase_energy(ENERGY_GAIN // 2)
+            # p2.increase_energy(ENERGY_GAIN // 2)
 
     @staticmethod
     def bad_collision(p1, p2):
