@@ -3,7 +3,8 @@ import random
 
 import pygame
 from pygame.locals import *
-
+import matplotlib.pyplot as plt
+import numpy
 
 # -----PARAMS-----
 
@@ -13,7 +14,7 @@ map_size = 32  # the width and height
 margin = 1
 show_energy = False
 font_size = 15
-
+plot = False
 
 DENSITY = 0.2  # RO
 ENERGY_INIT = 20  # N
@@ -80,8 +81,7 @@ class Cell(object):
         if non_zeros == 2:
             """not doing a xor, because 1 might be replaced
             by something else in the future (maybe a class)"""
-            return (d['N'] == 0 and d['S'] == 0) \
-                   or (d['E'] == 0 and d['W'] == 0)
+            return (d['N'] == 0 and d['S'] == 0) or (d['E'] == 0 and d['W'] == 0)
         return False
 
     def decrease_energy(self):
@@ -203,22 +203,33 @@ class Board(object):
 
     def update_board(self):
         """Refreshes the board (GUI)"""
+        total_energy = num_good = num_bad = 0
         for i in xrange(map_size):
             for g in xrange(map_size):
                 cell = self.map[i][g]
                 cell.state = cell.next_state
-                self.refresh_cell(cell)
+                energy_now, good_now, bad_now = self.refresh_cell(cell)
+                total_energy += energy_now
+                num_good += good_now
+                num_bad += bad_now
                 cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+        return total_energy, num_good + num_bad, num_good, num_bad
 
-
-    def refresh_cell(self, cell):
-        loc = cell.location
+    @staticmethod
+    def refresh_cell(ref_cell):
+        loc = ref_cell.location
         drawn_text = ""
-        if not cell.is_empty():
-            particles_colours = [part.calculate_colour() for el, part in cell.state.items() if part]
+        energy = 0
+        num_good = 0
+        num_bad = 0
+        if not ref_cell.is_empty():
+            particles_colours = [part.calculate_colour() for el, part in ref_cell.state.items() if part]
             colour = tuple(sum(t) / len(particles_colours) for t in zip(*particles_colours))
+            energy = sum([part.energy for _, part in ref_cell.state.items() if part])
+            num_good = len([part for _, part in ref_cell.state.items() if part and part.ptype == "good"])
+            num_bad = len(particles_colours) - num_good
             if show_energy and len(particles_colours) == 1:
-                drawn_text = [part for _, part in cell.state.items() if part][0].energy
+                drawn_text = [part for _, part in ref_cell.state.items() if part][0].energy
         else:
             colour = DEAD_COLOUR
         # colour = (50, 80, 200) if not cell.is_empty() else (30, 30, 30)
@@ -226,7 +237,9 @@ class Board(object):
             loc[0] * (margin + tiles.size) + margin, loc[1] * (margin + tiles.size) + margin, tiles.size, tiles.size))
         if show_energy and drawn_text:
             label = label_font.render("{0:d}".format(drawn_text), 1, (255, 255, 255))
-            screen.blit(label, (loc[0] * (margin + tiles.size) + 2 * margin, loc[1] * (margin + tiles.size) + 2 * margin))
+            screen.blit(label,
+                        (loc[0] * (margin + tiles.size) + 2 * margin, loc[1] * (margin + tiles.size) + 2 * margin))
+        return energy, num_good, num_bad
 
     def redraw(self, fill=True):
         self.map = []
@@ -234,11 +247,31 @@ class Board(object):
         self.draw()
 
 
+def update_line(updated_line, updated_axes, x_data, y_data):
+    updated_line.set_xdata(numpy.append(updated_line.get_xdata(), x_data))
+    updated_line.set_ydata(numpy.append(updated_line.get_ydata(), y_data))
+    if plot:
+        updated_axes.relim()
+        updated_axes.autoscale_view(True, True, True)
+        plt.draw()
+
+
+def update_game(board, turn):
+    board.next_iteration()
+    energy, num_all, num_good, num_bad = board.update_board()
+    if fig:
+        update_line(line, axes, turn, energy)
+        update_line(line2, axes2, turn, num_all)
+        update_line(line3, axes3, turn, num_good)
+        update_line(line4, axes4, turn, num_bad)
+
+
 if __name__ == "__main__":
 
     pygame.init()
 
     label_font = pygame.font.SysFont("Helvetica", font_size)
+    fig = None
 
     tiles = Tile(squares)
     screen_size = map_size * tiles.size, map_size * tiles.size
@@ -251,6 +284,7 @@ if __name__ == "__main__":
     board.draw()
     tp = 0
     run = False
+    turns = 0
 
     while not done:
         milliseconds = clock.tick(60)
@@ -267,12 +301,45 @@ if __name__ == "__main__":
                     show_energy = not show_energy
                 elif event.key == K_q:
                     run = False
-                    board.next_iteration()
-                    board.update_board()
+                    update_game(board, turns)
+                    turns += 1
                 elif event.key == K_r:
                     board.redraw(False)
                 elif event.key == K_a:
                     board.redraw(True)
+                elif event.key == K_p:
+                    if not fig:
+                        plt.ion()
+                        fig = plt.figure()
+                        axes = fig.add_subplot(2, 2, 1)
+                        axes2 = fig.add_subplot(2, 2, 2)
+                        axes3 = fig.add_subplot(2, 2, 3)
+                        axes4 = fig.add_subplot(2, 2, 4)
+
+                        axes.set_autoscale_on(True)
+                        axes.autoscale_view(True, True, True)
+                        axes.set_xlabel("turns")
+                        axes.set_ylabel("energy")
+                        line, = axes.plot([], [])
+
+                        axes2.set_autoscale_on(True)
+                        axes2.autoscale_view(True, True, True)
+                        axes2.set_xlabel("turns")
+                        axes2.set_ylabel("number of all")
+                        line2, = axes2.plot([], [])
+
+                        axes3.set_autoscale_on(True)
+                        axes3.autoscale_view(True, True, True)
+                        axes3.set_xlabel("turns")
+                        axes3.set_ylabel("number of good")
+                        line3, = axes3.plot([], [])
+
+                        axes4.set_autoscale_on(True)
+                        axes4.autoscale_view(True, True, True)
+                        axes4.set_xlabel("turns")
+                        axes4.set_ylabel("number of bad")
+                        line4, = axes4.plot([], [])
+                    plot = not plot
             elif event.type == MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
                 (button1, button2, button3) = pygame.mouse.get_pressed()
@@ -297,8 +364,8 @@ if __name__ == "__main__":
 
         if run and tp >= 1000 / speed:
             tp = 0
-            board.next_iteration()
-            board.update_board()
+            update_game(board, turns)
+            turns += 1
 
         pygame.display.flip()
 
