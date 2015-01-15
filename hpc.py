@@ -1,18 +1,23 @@
 from __future__ import division
-from collections import OrderedDict
-import pygame, random
+import random
+
+import pygame
 from pygame.locals import *
+
 
 # -----PARAMS-----
 
 speed = 10  # how many iterations per second
-squares = 16  # size of squares: 8 or 16 or 32 or 64
+squares = 25  # size of squares
 map_size = 32  # the width and height
 margin = 1
+show_energy = False
+font_size = 15
+
 
 DENSITY = 0.2  # RO
 ENERGY_INIT = 20  # N
-ENERGY_GAIN = 30  # M
+ENERGY_GAIN = 40  # M
 ENERGY_SPLIT = 'good_or_bad'  # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
 GOOD_TO_BAD_RATIO = 0.8
 
@@ -36,7 +41,7 @@ behaviours = ["", "good", "bad"]
 class Particle(object):
     def __init__(self, ptype='random'):
         diff = 0.1 * ENERGY_INIT
-        self.energy = random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff)
+        self.energy = int(random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff))
         if ptype == 'random':
             self.ptype = 'good' if random.random() < GOOD_TO_BAD_RATIO else 'bad'
         else:
@@ -46,7 +51,7 @@ class Particle(object):
         self.energy -= 1
 
     def calculate_colour(self):
-        colour_multiplier = max(MIN_COLOUR, self.energy/MAX_ENERGY * MAX_COLOUR)
+        colour_multiplier = max(MIN_COLOUR, self.energy / MAX_ENERGY * MAX_COLOUR)
         added_colour = tuple(n * colour_multiplier for n in alive_colours[self.ptype])
         return (sum(t) for t in zip(DEAD_COLOUR, added_colour))
 
@@ -122,8 +127,8 @@ class Board(object):
 
     @staticmethod
     def good_collision(p1, p2):
-        p1.increase_energy(ENERGY_GAIN / 2)
-        p2.increase_energy(ENERGY_GAIN / 2)
+        p1.increase_energy(ENERGY_GAIN // 2)
+        p2.increase_energy(ENERGY_GAIN // 2)
 
     @staticmethod
     def winner_takes_it_all(p1, p2):
@@ -132,8 +137,8 @@ class Board(object):
         elif p2.energy > p1.energy:
             p2.increase_energy(ENERGY_GAIN)
         else:
-            p1.increase_energy(ENERGY_GAIN / 2)
-            p2.increase_energy(ENERGY_GAIN / 2)
+            p1.increase_energy(ENERGY_GAIN // 2)
+            p2.increase_energy(ENERGY_GAIN // 2)
 
     @staticmethod
     def bad_collision(p1, p2):
@@ -208,23 +213,33 @@ class Board(object):
 
     def refresh_cell(self, cell):
         loc = cell.location
+        drawn_text = ""
         if not cell.is_empty():
             particles_colours = [part.calculate_colour() for el, part in cell.state.items() if part]
             colour = tuple(sum(t) / len(particles_colours) for t in zip(*particles_colours))
+            if show_energy and len(particles_colours) == 1:
+                drawn_text = [part for _, part in cell.state.items() if part][0].energy
         else:
             colour = DEAD_COLOUR
         # colour = (50, 80, 200) if not cell.is_empty() else (30, 30, 30)
         pygame.draw.rect(screen, colour, (
             loc[0] * (margin + tiles.size) + margin, loc[1] * (margin + tiles.size) + margin, tiles.size, tiles.size))
+        if show_energy and drawn_text:
+            label = label_font.render("{0:d}".format(drawn_text), 1, (255, 255, 255))
+            screen.blit(label, (loc[0] * (margin + tiles.size) + 2 * margin, loc[1] * (margin + tiles.size) + 2 * margin))
 
     def redraw(self, fill=True):
         self.map = []
         self.fill(fill)
         self.draw()
 
+
 if __name__ == "__main__":
 
     pygame.init()
+
+    label_font = pygame.font.SysFont("Helvetica", font_size)
+
     tiles = Tile(squares)
     screen_size = map_size * tiles.size, map_size * tiles.size
     screen = pygame.display.set_mode(screen_size)
@@ -237,8 +252,6 @@ if __name__ == "__main__":
     tp = 0
     run = False
 
-
-
     while not done:
         milliseconds = clock.tick(60)
         seconds = milliseconds / 1000.0
@@ -250,6 +263,8 @@ if __name__ == "__main__":
             elif event.type == KEYDOWN:
                 if event.key == K_SPACE:
                     run = not run
+                elif event.key == K_e:
+                    show_energy = not show_energy
                 elif event.key == K_q:
                     run = False
                     board.next_iteration()
