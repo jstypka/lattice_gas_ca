@@ -15,16 +15,18 @@ margin = 1
 show_energy = False
 font_size = 15
 plot = False
+children = True
 
 DENSITY = 0.2  # RO
 ENERGY_INIT = 20  # N
 ENERGY_GAIN = 40  # M
+MAX_ENERGY = 200
 ENERGY_SPLIT = 'good_or_bad'  # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
+ENERGY_CHILD = 100
 GOOD_TO_BAD_RATIO = 0.8
 
 MAX_COLOUR = 220
 MIN_COLOUR = 20
-MAX_ENERGY = 200
 
 DEAD_COLOUR = (30, 30, 30)
 GOOD_COLOUR = (0, 0, 1)
@@ -40,9 +42,9 @@ behaviours = ["", "good", "bad"]
 
 
 class Particle(object):
-    def __init__(self, ptype='random'):
+    def __init__(self, ptype='random', energy=None):
         diff = 0.1 * ENERGY_INIT
-        self.energy = int(random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff))
+        self.energy = energy if energy else int(random.uniform(ENERGY_INIT - diff, ENERGY_INIT + diff))
         if ptype == 'random':
             self.ptype = 'good' if random.random() < GOOD_TO_BAD_RATIO else 'bad'
         else:
@@ -185,6 +187,10 @@ class Board(object):
                 st['W'], st['E'] = self.collide_particles(st['N'], st['S'])
                 st['N'], st['S'] = 0, 0
 
+
+        if children:
+            self.create_children(st)
+
         if st['N'] != 0:
             m[x][(y + 1) % map_size].next_state['N'] = st['N']
         if st['S'] != 0:
@@ -193,6 +199,32 @@ class Board(object):
             m[(x + 1) % map_size][y].next_state['E'] = st['E']
         if st['W'] != 0:
             m[x - 1][y].next_state['W'] = st['W']
+
+
+    def create_children(self, state):
+        parents_dict = {}
+        found_child = False
+        available_positions = []
+        for key in state:
+            if state[key] != 0:
+                parents_dict[(state[key].energy, key)] = state[key].ptype
+            else:
+                available_positions.append(key)
+
+        for key in sorted(parents_dict.keys()):
+            if not len(available_positions):
+                break
+            else:
+                if key[0] >= ENERGY_CHILD:
+                    pos = random.choice(available_positions)
+                    state[pos] = Particle(parents_dict[key], key[0]//2)
+                    state[key[1]].energy = key[0]//2
+                    available_positions.remove(pos)
+                    found_child = True
+                else:
+                    break
+
+        return found_child
 
     def next_iteration(self):
         for i in xrange(map_size):
