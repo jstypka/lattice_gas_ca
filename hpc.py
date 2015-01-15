@@ -12,18 +12,23 @@ margin = 1
 
 DENSITY = 0.2  # RO
 ENERGY_INIT = 20  # N
-ENERGY_GAIN = 10  # M
+ENERGY_GAIN = 30  # M
 ENERGY_SPLIT = 'good_or_bad'  # 'equal' | 'winner_takes_it_all' | 'good_or_bad'
 GOOD_TO_BAD_RATIO = 0.8
 
+MAX_COLOUR = 220
+MIN_COLOUR = 20
+MAX_ENERGY = 200
+
 DEAD_COLOUR = (30, 30, 30)
-GOOD_COLOUR = (10, 20, 40)
-BAD_COLOUR = (40, 20, 10)
+GOOD_COLOUR = (0, 0, 1)
+BAD_COLOUR = (1, 0, 0)
 
 alive_colours = {
     "bad": BAD_COLOUR,
     "good": GOOD_COLOUR
 }
+
 alive_states = [False, True, True]
 behaviours = ["", "good", "bad"]
 
@@ -39,6 +44,14 @@ class Particle(object):
 
     def decrease_energy(self):
         self.energy -= 1
+
+    def calculate_colour(self):
+        colour_multiplier = max(MIN_COLOUR, self.energy/MAX_ENERGY * MAX_COLOUR)
+        added_colour = tuple(n * colour_multiplier for n in alive_colours[self.ptype])
+        return (sum(t) for t in zip(DEAD_COLOUR, added_colour))
+
+    def increase_energy(self, energy):
+        self.energy = min(MAX_ENERGY, self.energy + energy)
 
 
 class Tile(object):
@@ -109,15 +122,27 @@ class Board(object):
 
     @staticmethod
     def good_collision(p1, p2):
-        p1.energy += ENERGY_GAIN / 2
-        p2.energy += ENERGY_GAIN / 2
+        p1.increase_energy(ENERGY_GAIN / 2)
+        p2.increase_energy(ENERGY_GAIN / 2)
+
+    @staticmethod
+    def winner_takes_it_all(p1, p2):
+        if p1.energy > p2.energy:
+            p1.increase_energy(ENERGY_GAIN)
+        elif p2.energy > p1.energy:
+            p2.increase_energy(ENERGY_GAIN)
+        else:
+            p1.increase_energy(ENERGY_GAIN / 2)
+            p2.increase_energy(ENERGY_GAIN / 2)
 
     @staticmethod
     def bad_collision(p1, p2):
-        if p1.energy > p2.energy:
-            p1.energy += ENERGY_GAIN
+        if p1.ptype == "good":
+            p2.increase_energy(ENERGY_GAIN)
+        elif p2.ptype == "good":
+            p1.increase_energy(ENERGY_GAIN)
         else:
-            p2.energy += ENERGY_GAIN
+            Board.winner_takes_it_all(p1, p2)
 
     @staticmethod
     def collide_particles(p1, p2):
@@ -125,7 +150,7 @@ class Board(object):
             Board.good_collision(p1, p2)
 
         elif ENERGY_SPLIT == 'winner_takes_it_all':
-            Board.bad_collision(p1, p2)
+            Board.winner_takes_it_all(p1, p2)
 
         elif ENERGY_SPLIT == 'good_or_bad':
             if p1.ptype == p2.ptype == 'good':
@@ -184,7 +209,7 @@ class Board(object):
     def refresh_cell(self, cell):
         loc = cell.location
         if not cell.is_empty():
-            particles_colours = [alive_colours[part.ptype] for el, part in cell.state.items() if part]
+            particles_colours = [part.calculate_colour() for el, part in cell.state.items() if part]
             colour = tuple(sum(t) / len(particles_colours) for t in zip(*particles_colours))
         else:
             colour = DEAD_COLOUR
@@ -192,107 +217,74 @@ class Board(object):
         pygame.draw.rect(screen, colour, (
             loc[0] * (margin + tiles.size) + margin, loc[1] * (margin + tiles.size) + margin, tiles.size, tiles.size))
 
+    def redraw(self, fill=True):
+        self.map = []
+        self.fill(fill)
+        self.draw()
 
-pygame.init()
-tiles = Tile(squares)
-screen_size = map_size * tiles.size, map_size * tiles.size
-screen = pygame.display.set_mode(screen_size)
-clock = pygame.time.Clock()
-done = False
+if __name__ == "__main__":
 
-board = Board()
-board.fill(False)
-board.draw()
-tp = 0
-run = False
+    pygame.init()
+    tiles = Tile(squares)
+    screen_size = map_size * tiles.size, map_size * tiles.size
+    screen = pygame.display.set_mode(screen_size)
+    clock = pygame.time.Clock()
+    done = False
 
-while not done:
-    milliseconds = clock.tick(60)
-    seconds = milliseconds / 1000.0
-    tp += milliseconds
-
-    for event in pygame.event.get():
-        if event.type == QUIT:
-            done = True
-
-        if event.type == KEYDOWN:
-            if event.key == K_SPACE:
-                run = not run
-
-            if event.key == K_q:
-                run = False
-                board.next_iteration()
-                board.update_board()
-
-
-            def redraw_board(fill=True):
-                board.map = []
-                board.fill(fill)
-                board.draw()
-
-            if event.key == K_r:
-                redraw_board(False)
-
-            if event.key == K_a:
-                redraw_board((True))
-
-        # if event.type == MOUSEBUTTONUP:
-        # for i in xrange(map_size):
-        #         for g in xrange(map_size):
-        #             board.map[i][g].pressed = 0
-        if event.type == MOUSEBUTTONDOWN:
-            pos = pygame.mouse.get_pos()
-            (button1, button2, button3) = pygame.mouse.get_pressed()
-            for i in xrange(map_size):
-                for g in xrange(map_size):
-                    cell = board.map[i][g]
-                    x_begin = cell.location[0] * (tiles.size + margin)
-                    y_begin = cell.location[1] * (tiles.size + margin)
-
-                    if 0 <= pos[0] - x_begin < tiles.size and 0 <= pos[1] - y_begin < tiles.size:
-
-                        if button1:
-                            cell.pressed_count = (cell.pressed_count + 1) % len(alive_states)
-                        else:
-                            cell.pressed_count = (cell.pressed_count - 1) % len(alive_states)
-
-                        cell.state = Cell.generate_state(alive_states[cell.pressed_count],
-                                                         behaviours[cell.pressed_count])
-
-                        board.refresh_cell(cell)
-                        cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+    board = Board()
+    board.fill(False)
+    board.draw()
+    tp = 0
+    run = False
 
 
 
+    while not done:
+        milliseconds = clock.tick(60)
+        seconds = milliseconds / 1000.0
+        tp += milliseconds
 
-    # pressed = pygame.key.get_pressed()
-    # mouse = pygame.mouse.get_pressed()
-    # event = pygame.event.get()
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                done = True
+            elif event.type == KEYDOWN:
+                if event.key == K_SPACE:
+                    run = not run
+                elif event.key == K_q:
+                    run = False
+                    board.next_iteration()
+                    board.update_board()
+                elif event.key == K_r:
+                    board.redraw(False)
+                elif event.key == K_a:
+                    board.redraw(True)
+            elif event.type == MOUSEBUTTONDOWN:
+                pos = pygame.mouse.get_pos()
+                (button1, button2, button3) = pygame.mouse.get_pressed()
+                for i in xrange(map_size):
+                    for g in xrange(map_size):
+                        cell = board.map[i][g]
+                        x_begin = cell.location[0] * (tiles.size + margin)
+                        y_begin = cell.location[1] * (tiles.size + margin)
 
-    if run and tp >= 1000 / speed:
-        tp = 0
-        board.next_iteration()
-        board.update_board()
+                        if 0 <= pos[0] - x_begin < tiles.size and 0 <= pos[1] - y_begin < tiles.size:
 
-    # if mouse[0] or mouse[2]:
-    # for i in xrange(map_size):
-    #         for g in xrange(map_size):
-    #             cell = board.map[i][g]
-    #             x_begin = cell.location[0] * (tiles.size + margin)
-    #             y_begin = cell.location[1] * (tiles.size + margin)
-    #
-    #             if 0 <= pos[0] - x_begin < tiles.size and 0 <= pos[1] - y_begin < tiles.size:
-    #
-    #                 if mouse[0]:
-    #                     cell.pressed_count = (cell.pressed_count + 1) % len(alive_states)
-    #                 else:
-    #                     cell.pressed_count = (cell.pressed_count - 1) % len(alive_states)
-    #
-    #                 cell.state = Cell.generate_state(alive_states[cell.pressed_count], behaviours[cell.pressed_count])
-    #
-    #                 board.refresh_cell(cell)
-    #                 cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+                            if button1:
+                                cell.pressed_count = (cell.pressed_count + 1) % len(alive_states)
+                            else:
+                                cell.pressed_count = (cell.pressed_count - 1) % len(alive_states)
 
-    pygame.display.flip()
+                            cell.state = Cell.generate_state(alive_states[cell.pressed_count],
+                                                             behaviours[cell.pressed_count])
 
-pygame.quit()
+                            board.refresh_cell(cell)
+                            cell.next_state = {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+
+        if run and tp >= 1000 / speed:
+            tp = 0
+            board.next_iteration()
+            board.update_board()
+
+        pygame.display.flip()
+
+    pygame.quit()
